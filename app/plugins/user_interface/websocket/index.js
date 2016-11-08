@@ -545,6 +545,37 @@ function InterfaceWebUI(context) {
 
 			});
 
+			// TO DO: ADD TRANSLATIONS !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			connWebSocket.on('manageBackup', function (data) {
+				var selfConnWebSocket = this;
+
+				var value = data;
+
+				var response;
+
+				response=self.commandRouter.managePlaylists(value)
+					.then(self.commandRouter.manageFavourites(value))
+					.fail(function () {
+						self.printToastMessage('error', "Backup error", 'An error occurred while managing backups');
+					});
+			});
+
+			connWebSocket.on('getBackup', function (data) {
+				var selfConnWebSocket = this;
+
+				var response = self.commandRouter.loadBackup(data);
+
+				if (response != undefined) {
+					response.then(function (result) {
+						selfConnWebSocket.emit('pushBackup', result);
+					})
+						.fail(function () {
+							self.printToastMessage('error', "Browse error", 'An error occurred while browsing the folder.');
+						});
+				}
+
+			});
+
 			connWebSocket.on('search', function (data) {
 				var selfConnWebSocket = this;
 
@@ -622,6 +653,7 @@ function InterfaceWebUI(context) {
 
 				var returnedData = self.commandRouter.playListManager.createPlaylist(data.name);
 				returnedData.then(function (data) {
+                    selfConnWebSocket.emit('pushListPlaylist', data);
 					selfConnWebSocket.emit('pushCreatePlaylist', data);
 				});
 
@@ -631,10 +663,22 @@ function InterfaceWebUI(context) {
 			connWebSocket.on('deletePlaylist', function (data) {
 				var selfConnWebSocket = this;
 
-				var returnedData = self.commandRouter.playListManager.deletePlaylist(data.value);
+				var returnedData = self.commandRouter.playListManager.deletePlaylist(data.name);
 				returnedData.then(function (data) {
-					selfConnWebSocket.emit('pushDeletePlaylist', data);
+					selfConnWebSocket.emit('pushListPlaylist', data);
+					var response=self.musicLibrary.executeBrowseSource('playlists');
+
+					if (response != undefined) {
+						response.then(function (result) {
+							selfConnWebSocket.emit('pushBrowseLibrary', result);
+						})
+							.fail(function () {
+								self.printToastMessage('error', "Browse error", 'An error occurred while browsing the folder.');
+							});
+					}
 				});
+
+
 
 
 			});
@@ -651,11 +695,16 @@ function InterfaceWebUI(context) {
 			});
 
 			connWebSocket.on('addToPlaylist', function (data) {
-				var selfConnWebSocket = this;
+			    var selfConnWebSocket = this;
 
-				var returnedData = self.commandRouter.playListManager.addToPlaylist(data.name, data.service, data.uri);
+                var returnedData = self.commandRouter.playListManager.addToPlaylist(data.name, data.service, data.uri);
 				returnedData.then(function (data) {
-					selfConnWebSocket.emit('pushAddToPlaylist', data);
+                    var returnedListData = self.commandRouter.playListManager.listPlaylist();
+                    returnedListData.then(function (listdata) {
+                        selfConnWebSocket.emit('pushListPlaylist', listdata);
+                    });
+
+                    selfConnWebSocket.emit('pushAddToPlaylist', data);
 				});
 
 			});
@@ -1076,6 +1125,10 @@ function InterfaceWebUI(context) {
 			 */
 			connWebSocket.on('rescanDb', function (data) {
 				self.commandRouter.executeOnPlugin('music_service', 'mpd', 'rescanDb', '');
+			});
+
+			connWebSocket.on('updateDb', function (data) {
+				self.commandRouter.executeOnPlugin('music_service', 'mpd', 'updateDb', '');
 			});
 
 
@@ -1655,6 +1708,21 @@ function InterfaceWebUI(context) {
 				selfConnWebSocket.emit('pushDonePage', laststep);
 			});
 
+			connWebSocket.on('checkPassword', function (data) {
+				var selfConnWebSocket = this;
+
+
+				var check = self.commandRouter.executeOnPlugin('system_controller', 'system', 'checkPassword', data);
+
+				if (check != undefined) {
+					check.then(function (data) {
+						selfConnWebSocket.emit('checkPassword', data);
+					});
+				}
+
+
+			});
+
 
 
 
@@ -1813,7 +1881,11 @@ InterfaceWebUI.prototype.emitFavourites = function (value) {
 };
 
 InterfaceWebUI.prototype.broadcastMessage = function(emit,payload) {
-    this.libSocketIO.sockets.emit(emit,payload);
+	if(emit.msg && emit.value) {
+		this.libSocketIO.sockets.emit(emit.msg,emit.value);
+	} else {
+		this.libSocketIO.sockets.emit(emit,payload);
+	}
 };
 
 
